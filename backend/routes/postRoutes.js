@@ -21,11 +21,9 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-/* 
-=================================
+/* ================================
 ✅ CREATE A POST (With Image Upload)
-=================================
-*/
+================================ */
 router.post("/", upload.single("image"), (req, res) => {
   const { user_id, content } = req.body;
   const image = req.file ? `/uploads/${req.file.filename}` : null;
@@ -33,8 +31,7 @@ router.post("/", upload.single("image"), (req, res) => {
   if (!user_id || !content) {
     return res.status(400).json({ error: "User ID and content are required" });
   }
-  res.json({ imageUrl: `/uploads/${req.file.filename}` });
-  
+
   const query = "INSERT INTO posts (user_id, content, image) VALUES (?, ?, ?)";
   db.query(query, [user_id, content, image], (err, result) => {
     if (err) {
@@ -45,11 +42,9 @@ router.post("/", upload.single("image"), (req, res) => {
   });
 });
 
-/* 
-=================================
+/* ================================
 ✅ FETCH ALL POSTS (Include Username)
-=================================
-*/
+================================ */
 router.get("/", (req, res) => {
   const query = `
     SELECT p.*, u.username 
@@ -66,76 +61,72 @@ router.get("/", (req, res) => {
   });
 });
 
-/* 
-=================================
+/* ================================
 ✅ FETCH A SINGLE POST BY ID
-=================================
-*/
-router.get("/:postId", (req, res) => {
-  const postId = req.params.postId;
-  
-  const query = `
-    SELECT p.*, u.username 
-    FROM posts p 
-    JOIN users u ON p.user_id = u.id 
-    WHERE p.id = ?`;
-
-  db.query(query, [postId], (err, results) => {
+================================ */
+router.get("/:id", (req, res) => {
+  const postId = req.params.id;
+  db.query("SELECT * FROM posts WHERE id = ?", [postId], (err, results) => {
     if (err) {
-      console.error("Error fetching post:", err);
       return res.status(500).json({ error: "Database error" });
     }
     if (results.length === 0) {
       return res.status(404).json({ error: "Post not found" });
     }
-    res.json(results[0]);
+
+    const post = results[0];
+    post.image = post.image ? `http://localhost:5000/${post.image}` : null;
+    res.json(post);
   });
 });
 
-/* 
-=================================
-✅ LIKE A POST (Prevent Duplicate Likes)
-=================================
-*/
-app.post("/api/posts/:postId/like", (req, res) => {
-  const { postId } = req.params;
-  const { userId } = req.body;
+/* ================================
+✅ LIKE / UNLIKE A POST
+================================ */
+router.post("/:id/like", async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const postId = req.params.id;
 
-  if (!userId) return res.status(400).json({ error: "User ID is required to like a post" });
-
-  db.query("SELECT * FROM likes WHERE userId = ? AND postId = ?", [userId, postId], (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
-
-    if (results.length > 0) {
-      // User already liked the post -> Remove like
-      db.query("DELETE FROM likes WHERE userId = ? AND postId = ?", [userId, postId], (err) => {
-        if (err) return res.status(500).json({ error: err.message });
-
-        db.query("UPDATE posts SET likes = likes - 1 WHERE id = ?", [postId], (err) => {
-          if (err) return res.status(500).json({ error: err.message });
-          res.json({ liked: false });
-        });
-      });
-    } else {
-      // User is liking the post
-      db.query("INSERT INTO likes (userId, postId) VALUES (?, ?)", [userId, postId], (err) => {
-        if (err) return res.status(500).json({ error: err.message });
-
-        db.query("UPDATE posts SET likes = likes + 1 WHERE id = ?", [postId], (err) => {
-          if (err) return res.status(500).json({ error: err.message });
-          res.json({ liked: true });
-        });
-      });
+    if (!userId) {
+      return res.status(400).json({ error: "User ID is required" });
     }
-  });
+
+    // Check if the user has already liked the post
+    const [likes] = await db.promise().query(
+      "SELECT * FROM likes WHERE post_id = ? AND user_id = ?",
+      [postId, userId]
+    );
+
+    let liked = false;
+    let likeCount = 0;
+
+    if (likes.length > 0) {
+      // If already liked, remove the like
+      await db.promise().query("DELETE FROM likes WHERE post_id = ? AND user_id = ?", [postId, userId]);
+      await db.promise().query("UPDATE posts SET likes = likes - 1 WHERE id = ?", [postId]);
+    } else {
+      // If not liked, add the like
+      await db.promise().query("INSERT INTO likes (post_id, user_id) VALUES (?, ?)", [postId, userId]);
+      await db.promise().query("UPDATE posts SET likes = likes + 1 WHERE id = ?", [postId]);
+      liked = true;
+    }
+
+    // Get updated like count
+    const [updatedPost] = await db.promise().query("SELECT likes FROM posts WHERE id = ?", [postId]);
+    likeCount = updatedPost[0].likes;
+
+    return res.json({ message: liked ? "Post liked" : "Post unliked", liked, likeCount });
+
+  } catch (error) {
+    console.error("❌ Database Error:", error);
+    res.status(500).json({ error: "Failed to process like request" });
+  }
 });
 
-
-/* 
-=================================
-✅ FETCH COMMENTS FOR A POST (Include Username)
-=================================
-*/
+/* ================================
+✅ FETCH COMMENTS FOR A POST
+================================ */
 router.get("/:postId/comments", (req, res) => {
   const postId = req.params.postId;
 
@@ -151,21 +142,14 @@ router.get("/:postId/comments", (req, res) => {
         console.error("Error fetching comments:", err);
         return res.status(500).json({ error: "Database error" });
       }
-
-      if (results.length === 0) {
-        return res.status(404).json({ error: "No comments found for this post" });
-      }
-
       res.json(results);
     }
   );
 });
 
-/* 
-=================================
+/* ================================
 ✅ ADD A COMMENT TO A POST
-=================================
-*/
+================================ */
 router.post("/:postId/comments", (req, res) => {
   const { user_id, content } = req.body;
   const postId = req.params.postId;
@@ -184,11 +168,9 @@ router.post("/:postId/comments", (req, res) => {
   });
 });
 
-/* 
-=================================
+/* ================================
 ✅ DELETE A POST
-=================================
-*/
+================================ */
 router.delete("/:postId", (req, res) => {
   const postId = req.params.postId;
 
@@ -196,9 +178,6 @@ router.delete("/:postId", (req, res) => {
     if (err) {
       console.error("Error deleting post:", err);
       return res.status(500).json({ error: "Database error" });
-    }
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: "Post not found" });
     }
     res.json({ message: "Post deleted successfully" });
   });

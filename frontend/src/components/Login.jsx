@@ -4,20 +4,25 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
 function Login({ setUser }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [formData, setFormData] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError(""); // Clear previous errors
+
     try {
-      const res = await axios.post("http://localhost:5000/api/auth/login", { email, password });
+      const res = await axios.post("http://localhost:5000/api/auth/login", formData);
       localStorage.setItem("token", res.data.token);
       setUser(res.data.user);
       navigate("/dashboard");
     } catch (err) {
-      setError("Invalid credentials");
+      setError(err.response?.data?.error || "Something went wrong");
     }
   };
 
@@ -27,8 +32,23 @@ function Login({ setUser }) {
         <Typography variant="h5" gutterBottom>Login</Typography>
         {error && <Typography color="error">{error}</Typography>}
         <form onSubmit={handleSubmit}>
-          <TextField label="Email" fullWidth margin="normal" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <TextField label="Password" type="password" fullWidth margin="normal" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <TextField 
+            label="Email" 
+            name="email" 
+            fullWidth 
+            margin="normal" 
+            value={formData.email} 
+            onChange={handleChange} 
+          />
+          <TextField 
+            label="Password" 
+            name="password" 
+            type="password" 
+            fullWidth 
+            margin="normal" 
+            value={formData.password} 
+            onChange={handleChange} 
+          />
           <Button type="submit" variant="contained" color="primary" fullWidth sx={{ mt: 2 }}>Login</Button>
         </form>
       </Paper>

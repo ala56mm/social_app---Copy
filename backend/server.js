@@ -1,24 +1,27 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const db = require("./db");
+// const db = require("./db");
 const path = require("path");
 
 // Import Routes
 const authRoutes = require("./routes/authRoutes");
 const postRoutes = require("./routes/postRoutes");
 const commentRoutes = require("./routes/commentRoutes");
-const db = require("./db");
-const path = require("path");
 
 
 const app = express();
 
 // Middleware
-app.use(cors({ origin: "http://localhost:5173", credentials: true }));
+axios.get("http://localhost:5000/api/posts", { withCredentials: true })
+  .then(response => console.log(response.data))
+  .catch(error => console.error(error));
+
 app.use(express.json()); // Replaces body-parser
 // Serve "uploads" folder as static
+// app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
 
 // Test Route
 app.get("/", (req, res) => {
@@ -28,7 +31,6 @@ app.get("/", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api/comments", commentRoutes);
-app.use("/api/db", db);
 
 // Error Handling Middleware
 app.use((err, req, res, next) => {
